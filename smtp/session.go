@@ -15,6 +15,7 @@ type session struct {
 
 	respChan chan *Response
 	quit     chan bool
+	done     bool
 
 	data []byte
 	tls  bool
@@ -40,9 +41,10 @@ func newSession(conn net.Conn) *session {
 
 func HandleIncoming(conn net.Conn) {
 	log.Info("incoming")
+	defer conn.Close()
 	s := newSession(conn)
 	s.Greet()
-	for {
+	for !s.done {
 		line, err := s.readLine()
 		if err != nil {
 			log.Error(err)
@@ -64,6 +66,10 @@ func HandleIncoming(conn net.Conn) {
 		err = s.handleCommand(cmd)
 		if err != nil {
 			log.Error(err)
+		}
+
+		if s.done {
+			break
 		}
 	}
 }
@@ -89,7 +95,6 @@ func (s *session) readLine() (line []byte, err error) {
 func (s *session) handleCommand(c *Command) error {
 	switch c.code {
 	case HELO:
-		//do hello
 		return s.HELO(c)
 	case EHLO:
 		return s.EHLO(c)
@@ -100,9 +105,22 @@ func (s *session) handleCommand(c *Command) error {
 	case DATA:
 		return s.DATA(c)
 	case QUIT:
-		break
+		return s.QUIT(c)
 	}
 
+	return nil
+}
+
+func (s *session) QUIT(c *Command) error {
+	resp := Response{}
+	resp.SetCode(RespQuit)
+	resp.AddLine([]byte("OK"))
+	_, err := s.conn.Write(resp.Pack())
+	if err != nil {
+		return err
+	}
+
+	s.done = true
 	return nil
 }
 
