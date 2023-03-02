@@ -3,7 +3,6 @@ package smtp
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"net"
 	"regexp"
 
@@ -40,7 +39,7 @@ func newSession(conn net.Conn) *session {
 }
 
 func HandleIncoming(conn net.Conn) {
-	fmt.Println("incoming")
+	log.Info("incoming")
 	s := newSession(conn)
 	s.Greet()
 	for {
@@ -54,7 +53,7 @@ func HandleIncoming(conn net.Conn) {
 			break
 		}
 
-		fmt.Println("line:", string(line))
+		log.Info("line:", string(line))
 
 		cmd, err := ParseCommand(line)
 		if err != nil {
@@ -168,7 +167,7 @@ var parseRCPTArgsRegx = regexp.MustCompile(`(?i:To):\s*<([^>]+)>`)
 // can we do this more generically?
 func (s *session) RCPT(c *Command) error {
 	matches := parseRCPTArgsRegx.FindSubmatch(c.args)
-	fmt.Println(matches)
+	//fmt.Println(matches)
 	if matches == nil {
 		// error invalid MAIL syntax
 	}
@@ -195,14 +194,15 @@ func (s *session) DATA(c *Command) error {
 	resp := Response{}
 	resp.SetCode(RespStartMail)
 	resp.AddLine([]byte("End data with <CR><LF>.<CR><LF>"))
+	log.Info("Executing DATA")
 	_, err := s.conn.Write(resp.Pack())
 	if err != nil {
 		return err
 	}
 
+	log.Info("Reading DATA lines")
 	resp = Response{}
-	for i := 0; i < maxBodyLines; i++ {
-		s.scanner.Scan()
+	for i := 0; i < maxBodyLines && s.scanner.Scan(); i++ {
 		if err := s.scanner.Err(); err != nil {
 			log.Error(err)
 			resp.SetCode(RespFAILURE)
@@ -213,12 +213,18 @@ func (s *session) DATA(c *Command) error {
 
 		line := s.scanner.Bytes()
 		s.body = append(s.body, line...)
-		if len(line) == 3 && bytes.Compare(line, []byte{'.', '\r', '\n'}) == 0 {
+		if len(line) == 1 && bytes.Compare(line, []byte{'.'}) == 0 {
 			resp.SetCode(RespOK)
 			resp.AddLine([]byte("Ok: queued as a=@me"))
+			s.conn.Write(resp.Pack())
+			log.Info("Sent \"queued\" response")
 			break
+		} else {
+			log.Info("DATA Line: " + string(line))
 		}
 	}
+
+	log.Info("Finished reading DATA lines")
 
 	return nil
 }
