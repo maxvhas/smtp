@@ -78,16 +78,3 @@ func ParseCommand(line []byte) (command *Command, err error) {
 
 	return nil, ErrNoCommandFound
 }
-
-// func ParseCommand(message string) (*Command, error) {
-// 	split := strings.Split(message, " ")
-
-// 	if len(split) < 2 {
-// 		return nil, ErrNoCommandFound
-// 	}
-
-// 	return &Command{
-// 		CommandWord(split[0]),
-// 		split[1:],
-// 	}, nil
-// }
