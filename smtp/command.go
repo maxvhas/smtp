@@ -1,41 +1,93 @@
-package command
+package smtp
 
 import (
+	"bytes"
 	"errors"
-	"strings"
+	"fmt"
 )
 
 const CommandSize = 512
 
-type CommandWord string
+type CommandCode int
 
 const (
-	HELO CommandWord = "HELO"
-	EHLO             = "EHLO"
+	EMPTY CommandCode = iota
 
-	FROM = ""
-	TO
+	HELO
+	EHLO
+
+	MAIL
+	RCPT
 	DATA
 
 	QUIT
 )
 
-type Command struct {
-	word string
-	args []string
+var CommandToByte = map[CommandCode][]byte{
+	HELO: []byte("HELO"),
+	EHLO: []byte("EHLO"),
+
+	MAIL: []byte("MAIL"),
+	RCPT: []byte("RCPT"),
+	DATA: []byte("DATA"),
+
+	QUIT: []byte("QUIT"),
 }
 
-var ErrCommandTooShort = errors.New("Parse error")
+var CommandCodeMap = map[string]CommandCode{
+	"HELO": HELO,
+	"EHLO": EHLO,
+	"MAIL": MAIL,
+	"RCPT": RCPT,
+	"DATA": DATA,
+	"QUIT": QUIT,
+}
 
-func ParseCommand(message string) (*Command, error) {
-	split := strings.Split(message, " ")
+type Command struct {
+	code CommandCode
+	word []byte
+	args []byte
+}
 
-	if len(split) < 2 {
-		return nil, ErrCommandTooShort
+func (c *Command) String() string {
+	return fmt.Sprintf("word: %s, args: %s", string(c.word), string(c.args))
+}
+
+var (
+	ErrCommandTooShort = errors.New("smtp.Parser: Line is too short")
+	ErrNoCommandFound  = errors.New("smtp.Parser: No valid command found in line")
+)
+
+func ParseCommand(line []byte) (command *Command, err error) {
+	word, args, found := bytes.Cut(line, []byte{' '})
+	if !found {
+		word = line // Handle DATA case
 	}
 
-	return &Command{
-		split[0],
-		split[1:],
-	}, nil
+	if code, ok := CommandCodeMap[string(word)]; ok {
+		c := &Command{
+			code,
+			word,
+			args,
+		}
+
+		fmt.Println(c)
+
+		return c, nil
+	}
+
+	return nil, ErrNoCommandFound
 }
+
+// func ParseCommand(message string) (*Command, error) {
+// 	split := strings.Split(message, " ")
+
+// 	if len(split) < 2 {
+// 		return nil, ErrNoCommandFound
+// 	}
+
+// 	return &Command{
+// 		CommandWord(split[0]),
+// 		split[1:],
+// 	}, nil
+// }
