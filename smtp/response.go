@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"fmt"
 	"io"
 	"sync"
 )
@@ -16,9 +15,10 @@ const (
 )
 
 var ResponseCodeMap = map[ResponseCode][]byte{
-	RespReady:   []byte("220"),
-	RespOK:      []byte("250"),
-	RespFAILURE: []byte("554"),
+	RespReady:     []byte("220"),
+	RespOK:        []byte("250"),
+	RespStartMail: []byte("354"),
+	RespFAILURE:   []byte("554"),
 }
 
 var SupportedExtensions = [][]byte{
@@ -65,7 +65,6 @@ func (r *Response) Pack() []byte {
 		buf = append(buf, tmp...)
 	}
 
-	fmt.Println(string(buf))
 	return buf
 }
 
