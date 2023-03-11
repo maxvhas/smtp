@@ -6,7 +6,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Listen(host string) (net.Listener, error) {
+func Listen(host string, messageHandler MessageHandler) (net.Listener, error) {
 	laddr, err := net.ResolveTCPAddr("tcp", host)
 	l, err := net.ListenTCP("tcp", laddr)
 	if err != nil {
@@ -21,7 +21,7 @@ func Listen(host string) (net.Listener, error) {
 				continue
 			}
 
-			go HandleIncoming(conn)
+			go HandleIncoming(conn, messageHandler)
 		}
 	}()
 

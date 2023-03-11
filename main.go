@@ -22,6 +22,6 @@ func main() {
 
 		log.Info("got connection")
 
-		go smtp.HandleIncoming(conn)
+		go smtp.HandleIncoming(conn, nil)
 	}
 }

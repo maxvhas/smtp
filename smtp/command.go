@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const CommandSize = 512
@@ -71,7 +73,7 @@ func ParseCommand(line []byte) (command *Command, err error) {
 			args,
 		}
 
-		fmt.Println(c)
+		log.Info("Command = ", c)
 
 		return c, nil
 	}

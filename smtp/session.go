@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"regexp"
 
@@ -11,8 +12,8 @@ import (
 )
 
 type session struct {
-	conn    net.Conn
-	scanner *bufio.Scanner
+	conn   net.Conn
+	reader *bufio.Reader
 
 	respChan chan *Response
 	quit     chan bool
@@ -24,11 +25,35 @@ type session struct {
 
 	client []byte
 	src    []byte
-	dst    []byte
+	dst    [][]byte
 	body   []byte
+
+	messageHandler MessageHandler
 }
 
-const maxBodySize = 50 * 1024 * 1024 // 50MB
+func (s *session) handleDelivery() {
+	if s.messageHandler != nil {
+
+		destination := make([]string, len(s.dst))
+		for i, dest := range s.dst {
+			destination[i] = string(dest)
+		}
+
+		log.Info("Destinations:", destination)
+
+		log.Info("Delegating message to message handler")
+		s.messageHandler.Handle(Envelope{
+			Source:      string(s.src),
+			Destination: destination,
+			Body:        s.body,
+		})
+		return
+	}
+
+	log.Warn("No message handler configured, message discarded")
+}
+
+const maxBodySize = 56 * 1024 * 1024 // 56MB
 
 type sessionReader struct {
 	maxBodySize int
@@ -43,7 +68,7 @@ func (r *sessionReader) Read(b []byte) (int, error) {
 
 	r.readSize += read
 	if r.readSize > r.maxBodySize {
-		return read, ErrBodySize
+		return 0, ErrBodySize
 	}
 
 	return read, err
@@ -56,21 +81,20 @@ func newSessionReader(maxBodySize int, conn net.Conn) *sessionReader {
 	}
 }
 
-func newSession(conn net.Conn) *session {
+func newSession(conn net.Conn, messageHandler MessageHandler) *session {
 	reader := newSessionReader(maxBodySize, conn)
-	scanner := bufio.NewScanner(reader)
-	scanner.Split(bufio.ScanLines)
 	return &session{
-		conn:    conn,
-		scanner: scanner,
-		data:    make([]byte, 128),
+		conn:           conn,
+		reader:         bufio.NewReader(reader),
+		data:           make([]byte, 128),
+		messageHandler: messageHandler,
 	}
 }
 
-func HandleIncoming(conn net.Conn) {
+func HandleIncoming(conn net.Conn, messageHandler MessageHandler) {
 	log.Info("incoming")
 	defer conn.Close()
-	s := newSession(conn)
+	s := newSession(conn, messageHandler)
 	err := s.Greet()
 	if err != nil {
 		log.Error(err)
@@ -80,16 +104,26 @@ func HandleIncoming(conn net.Conn) {
 	for !s.done {
 		line, err := s.readLine()
 		if err != nil {
-			log.Error(err)
+			if errors.Is(err, ErrBodySize) {
+				log.Info(err, ", Terminating session.")
+				err = RespondTooMuchData(s.conn)
+			} else {
+				log.Error(err)
+			}
+
 			return
 		}
 
 		// EOF was reached, meaning the connection was closed
 		if line == nil {
+			log.Error("Unexpected behavior: Line was nil, but error was as well?", line)
 			break
 		}
 
-		log.Info("line:", string(line))
+		if len(line) == 0 {
+			log.Warn("Zero-length line detected")
+			continue
+		}
 
 		cmd, err := ParseCommand(line)
 		if err != nil {
@@ -100,11 +134,18 @@ func HandleIncoming(conn net.Conn) {
 
 		err = s.handleCommand(cmd)
 		if err != nil {
-			log.Error(err)
+			if errors.Is(err, ErrBodySize) {
+				log.Info(err, ", Terminating session.")
+				err = RespondTooMuchData(s.conn)
+			} else {
+				log.Error(err)
+			}
+
 			return
 		}
 
 		if s.done {
+			log.Info("Session is DONE, terminating connection")
 			break
 		}
 	}
@@ -117,14 +158,23 @@ func (s *session) Greet() error {
 }
 
 func (s *session) readLine() (line []byte, err error) {
-	if ok := s.scanner.Scan(); !ok {
-		return nil, s.scanner.Err()
+	var part []byte
+	var isPrefix bool
+
+	for part, isPrefix, err = s.reader.ReadLine(); err == nil; part, isPrefix, err = s.reader.ReadLine() {
+		line = append(line, part...)
+
+		if !isPrefix {
+			break
+		}
 	}
 
-	line = s.scanner.Bytes()
-	s.data = append(s.data, line...)
+	// Prevent line from being nil when no error occured
+	if err == nil && line == nil {
+		line = make([]byte, 0)
+	}
 
-	return line, nil
+	return line, err
 }
 
 func (s *session) handleCommand(c *Command) error {
@@ -230,9 +280,9 @@ func (s *session) RCPT(c *Command) error {
 	}
 
 	// TODO: Check email validity
-	s.dst = append(s.dst, matches[1]...)
+	s.dst = append(s.dst, matches[1])
 
-	line := append([]byte("Recipient "), s.dst...)
+	line := append([]byte("Recipient "), matches[1]...)
 	line = append(line, []byte(" ok")...)
 
 	resp := Response{}
@@ -240,6 +290,15 @@ func (s *session) RCPT(c *Command) error {
 	resp.AddLine(line)
 
 	_, err := s.conn.Write(resp.Pack())
+	return err
+}
+
+func RespondTooMuchData(conn net.Conn) error {
+	resp := &Response{}
+	resp.SetCode(RespTooMuchData)
+	resp.AddLine([]byte("Too much data"))
+	_, err := conn.Write(resp.Pack())
+
 	return err
 }
 
@@ -255,26 +314,27 @@ func (s *session) DATA(c *Command) error {
 
 	log.Info("Reading DATA lines")
 	resp = Response{}
-	for s.scanner.Scan() {
-		if err := s.scanner.Err(); err != nil {
-			log.Error(err)
-			resp.SetCode(RespFAILURE)
-			resp.AddLine([]byte("Error while reading DATA segment"))
-			s.conn.Write(resp.Pack())
-			return err
-		}
-
-		line := s.scanner.Bytes()
+	for line, err := s.readLine(); err == nil; line, err = s.readLine() {
 		s.body = append(s.body, line...)
+		s.body = append(s.body, '\r', '\n')
+
 		if len(line) == 1 && bytes.Compare(line, []byte{'.'}) == 0 {
 			resp.SetCode(RespOK)
 			resp.AddLine([]byte("Ok: queued as a=@me"))
 			s.conn.Write(resp.Pack())
 			log.Info("Sent \"queued\" response")
+
+			s.handleDelivery()
 			break
-		} else {
-			log.Info("DATA Line: " + string(line))
 		}
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		log.Error("Error reading data segment", err)
+		resp.SetCode(RespFAILURE)
+		resp.AddLine([]byte("Error while reading DATA segment"))
+		s.conn.Write(resp.Pack())
+		return err
 	}
 
 	log.Info("Finished reading DATA lines")

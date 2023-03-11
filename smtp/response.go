@@ -8,19 +8,21 @@ import (
 type ResponseCode int
 
 const (
-	RespReady     ResponseCode = 220
-	RespQuit      ResponseCode = 221
-	RespOK        ResponseCode = 250
-	RespStartMail ResponseCode = 354
-	RespFAILURE   ResponseCode = 554
+	RespReady       ResponseCode = 220
+	RespQuit        ResponseCode = 221
+	RespOK          ResponseCode = 250
+	RespStartMail   ResponseCode = 354
+	RespFAILURE     ResponseCode = 554
+	RespTooMuchData ResponseCode = 552
 )
 
 var ResponseCodeMap = map[ResponseCode][]byte{
-	RespReady:     []byte("220"),
-	RespQuit:      []byte("221"),
-	RespOK:        []byte("250"),
-	RespStartMail: []byte("354"),
-	RespFAILURE:   []byte("554"),
+	RespReady:       []byte("220"),
+	RespQuit:        []byte("221"),
+	RespOK:          []byte("250"),
+	RespStartMail:   []byte("354"),
+	RespFAILURE:     []byte("554"),
+	RespTooMuchData: []byte("552"),
 }
 
 var SupportedExtensions = [][]byte{
