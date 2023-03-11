@@ -3,6 +3,7 @@ package smtp
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"net"
 	"regexp"
 
@@ -27,10 +28,37 @@ type session struct {
 	body   []byte
 }
 
-const maxBodyLines = 500
+const maxBodySize = 50 * 1024 * 1024 // 50MB
+
+type sessionReader struct {
+	maxBodySize int
+	readSize    int
+	conn        net.Conn
+}
+
+var ErrBodySize = errors.New("Max size exceeded")
+
+func (r *sessionReader) Read(b []byte) (int, error) {
+	read, err := r.conn.Read(b)
+
+	r.readSize += read
+	if r.readSize > r.maxBodySize {
+		return read, ErrBodySize
+	}
+
+	return read, err
+}
+
+func newSessionReader(maxBodySize int, conn net.Conn) *sessionReader {
+	return &sessionReader{
+		maxBodySize: maxBodySize,
+		conn:        conn,
+	}
+}
 
 func newSession(conn net.Conn) *session {
-	scanner := bufio.NewScanner(conn)
+	reader := newSessionReader(maxBodySize, conn)
+	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanLines)
 	return &session{
 		conn:    conn,
@@ -43,11 +71,17 @@ func HandleIncoming(conn net.Conn) {
 	log.Info("incoming")
 	defer conn.Close()
 	s := newSession(conn)
-	s.Greet()
+	err := s.Greet()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
 	for !s.done {
 		line, err := s.readLine()
 		if err != nil {
 			log.Error(err)
+			return
 		}
 
 		// EOF was reached, meaning the connection was closed
@@ -61,11 +95,13 @@ func HandleIncoming(conn net.Conn) {
 		if err != nil {
 			log.Error(err)
 			// communicate parse error here
+			return
 		}
 
 		err = s.handleCommand(cmd)
 		if err != nil {
 			log.Error(err)
+			return
 		}
 
 		if s.done {
@@ -74,11 +110,10 @@ func HandleIncoming(conn net.Conn) {
 	}
 }
 
-func (s *session) Greet() {
+func (s *session) Greet() error {
 	_, err := s.conn.Write([]byte("220 localhost ESMTP Max\r\n"))
-	if err != nil {
-		log.Fatal(err)
-	}
+
+	return err
 }
 
 func (s *session) readLine() (line []byte, err error) {
@@ -220,7 +255,7 @@ func (s *session) DATA(c *Command) error {
 
 	log.Info("Reading DATA lines")
 	resp = Response{}
-	for i := 0; i < maxBodyLines && s.scanner.Scan(); i++ {
+	for s.scanner.Scan() {
 		if err := s.scanner.Err(); err != nil {
 			log.Error(err)
 			resp.SetCode(RespFAILURE)
