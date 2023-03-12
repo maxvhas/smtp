@@ -90,7 +90,6 @@ func newSession(conn net.Conn, config Config) *session {
 	return &session{
 		conn:   conn,
 		reader: bufio.NewReader(reader),
-		data:   make([]byte, 128),
 		config: config,
 	}
 }
