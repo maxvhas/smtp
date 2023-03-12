@@ -23,6 +23,7 @@ const (
 	DATA
 
 	QUIT
+	STARTTLS
 )
 
 var CommandToByte = map[CommandCode][]byte{
@@ -33,16 +34,18 @@ var CommandToByte = map[CommandCode][]byte{
 	RCPT: []byte("RCPT"),
 	DATA: []byte("DATA"),
 
-	QUIT: []byte("QUIT"),
+	QUIT:     []byte("QUIT"),
+	STARTTLS: []byte("STARTTLS"),
 }
 
 var CommandCodeMap = map[string]CommandCode{
-	"HELO": HELO,
-	"EHLO": EHLO,
-	"MAIL": MAIL,
-	"RCPT": RCPT,
-	"DATA": DATA,
-	"QUIT": QUIT,
+	"HELO":     HELO,
+	"EHLO":     EHLO,
+	"MAIL":     MAIL,
+	"RCPT":     RCPT,
+	"DATA":     DATA,
+	"QUIT":     QUIT,
+	"STARTTLS": STARTTLS,
 }
 
 type Command struct {

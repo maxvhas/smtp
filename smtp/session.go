@@ -3,6 +3,7 @@ package smtp
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -20,19 +21,19 @@ type session struct {
 	done     bool
 
 	data []byte
-	tls  bool
-	ebm  bool
+
+	config Config
+
+	ebm bool
 
 	client []byte
 	src    []byte
 	dst    [][]byte
 	body   []byte
-
-	messageHandler MessageHandler
 }
 
 func (s *session) handleDelivery() {
-	if s.messageHandler != nil {
+	if s.config.MessageHandler != nil {
 
 		destination := make([]string, len(s.dst))
 		for i, dest := range s.dst {
@@ -42,7 +43,7 @@ func (s *session) handleDelivery() {
 		log.Info("Destinations:", destination)
 
 		log.Info("Delegating message to message handler")
-		s.messageHandler.Handle(Envelope{
+		s.config.MessageHandler.Handle(Envelope{
 			Source:      string(s.src),
 			Destination: destination,
 			Body:        s.body,
@@ -81,20 +82,20 @@ func newSessionReader(maxBodySize int, conn net.Conn) *sessionReader {
 	}
 }
 
-func newSession(conn net.Conn, messageHandler MessageHandler) *session {
+func newSession(conn net.Conn, config Config) *session {
 	reader := newSessionReader(maxBodySize, conn)
 	return &session{
-		conn:           conn,
-		reader:         bufio.NewReader(reader),
-		data:           make([]byte, 128),
-		messageHandler: messageHandler,
+		conn:   conn,
+		reader: bufio.NewReader(reader),
+		data:   make([]byte, 128),
+		config: config,
 	}
 }
 
-func HandleIncoming(conn net.Conn, messageHandler MessageHandler) {
+func HandleIncoming(conn net.Conn, config Config) {
 	log.Info("incoming")
 	defer conn.Close()
-	s := newSession(conn, messageHandler)
+	s := newSession(conn, config)
 	err := s.Greet()
 	if err != nil {
 		log.Error(err)
@@ -189,11 +190,62 @@ func (s *session) handleCommand(c *Command) error {
 		return s.RCPT(c)
 	case DATA:
 		return s.DATA(c)
+	case STARTTLS:
+		return s.STARTTLS(c)
 	case QUIT:
 		return s.QUIT(c)
 	}
 
 	return nil
+}
+
+func (s *session) STARTTLS(c *Command) error {
+	if !s.config.StartTLS {
+		resp := Response{}
+		resp.SetCode(RespTLSNotAvailable)
+		resp.AddLine([]byte("TLS not available."))
+
+		_, err := s.conn.Write(resp.Pack())
+		return err
+	}
+
+	log.Info("Upgrading to TLS connection")
+	client := tls.Server(
+		s.conn,
+		&tls.Config{
+			Certificates: []tls.Certificate{
+				*s.config.StartTLSCert,
+			},
+		},
+	)
+
+	resp := Response{}
+	resp.SetCode(RespReady)
+	resp.AddLine([]byte("Ready to start TLS"))
+
+	_, err := s.conn.Write(resp.Pack())
+	if err != nil {
+		return err
+	}
+
+	log.Info("Performing TLS handshake")
+	err = client.Handshake()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	log.Info("Finished TLS handshake")
+
+	// Replace tcp connection with the upgraded TLS one
+	s.setConnection(client)
+
+	return nil
+}
+
+func (s *session) setConnection(conn net.Conn) {
+	s.conn = conn
+	s.reader = bufio.NewReader(newSessionReader(maxBodySize, conn))
 }
 
 func (s *session) QUIT(c *Command) error {
@@ -243,7 +295,7 @@ func (s *session) MAIL(c *Command) error {
 		// error invalid MAIL syntax
 	}
 
-	// TODO: Check email validity
+	// TODO: Check email validity (SPF)
 	s.src = append(s.src, matches[1]...)
 
 	if bytes.Compare(matches[2], []byte("8BITMIME")) == 0 {
