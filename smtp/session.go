@@ -83,7 +83,12 @@ func newSessionReader(maxBodySize int, conn net.Conn) *sessionReader {
 }
 
 func newSession(conn net.Conn, config Config) *session {
-	reader := newSessionReader(maxBodySize, conn)
+	if config.MaxBodySize == 0 {
+		config.MaxBodySize = maxBodySize
+	}
+
+	reader := newSessionReader(config.MaxBodySize, conn)
+
 	return &session{
 		conn:   conn,
 		reader: bufio.NewReader(reader),
@@ -245,7 +250,7 @@ func (s *session) STARTTLS(c *Command) error {
 
 func (s *session) setConnection(conn net.Conn) {
 	s.conn = conn
-	s.reader = bufio.NewReader(newSessionReader(maxBodySize, conn))
+	s.reader = bufio.NewReader(newSessionReader(s.config.MaxBodySize, conn))
 }
 
 func (s *session) QUIT(c *Command) error {

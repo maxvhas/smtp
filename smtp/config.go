@@ -10,5 +10,8 @@ type Config struct {
 	StartTLS     bool
 	StartTLSCert *tls.Certificate
 
+	// Max size of total connection body size, in bytes
+	MaxBodySize int
+
 	MessageHandler MessageHandler
 }

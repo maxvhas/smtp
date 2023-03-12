@@ -67,9 +67,10 @@ IsbznQwGLLhIEfKOMG3RJE/T6Q==
 
 type ServerTest struct {
 	suite.Suite
-	listener   net.Listener
-	listenPort int
-	handler    *messageHandlerWrapper
+	listener    net.Listener
+	listenPort  int
+	handler     *messageHandlerWrapper
+	maxBodySize int
 }
 
 type messageHandlerWrapper struct {
@@ -84,6 +85,7 @@ func (w *messageHandlerWrapper) Handle(e Envelope) {
 
 func (suite *ServerTest) SetupTest() {
 	suite.handler = &messageHandlerWrapper{}
+	suite.maxBodySize = 5 * 1024 * 1024
 
 	certificate, err := tls.X509KeyPair(TestCertBlock, TestKeyBlock)
 	if err != nil {
@@ -96,6 +98,7 @@ func (suite *ServerTest) SetupTest() {
 			MessageHandler: suite.handler,
 			StartTLS:       true,
 			StartTLSCert:   &certificate,
+			MaxBodySize:    suite.maxBodySize,
 		},
 	)
 	if err != nil {
@@ -174,7 +177,7 @@ func (suite *ServerTest) TestStartTLS() {
 }
 
 func (suite *ServerTest) TestMaxBodySize() {
-	data := make([]byte, maxBodySize+1024*1024)
+	data := make([]byte, suite.maxBodySize+1024*1024)
 
 	_, err := rand.Read(data)
 	if err != nil {
@@ -206,7 +209,7 @@ func (suite *ServerTest) TestHandler() {
 	}
 	defer func() { suite.handler.handleFunc = nil }()
 
-	data := make([]byte, maxBodySize-(1*1024*1024))
+	data := make([]byte, suite.maxBodySize-(1*1024*1024))
 
 	_, err := rand.Read(data)
 	if err != nil {
