@@ -20,8 +20,6 @@ type session struct {
 	quit     chan bool
 	done     bool
 
-	data []byte
-
 	config Config
 
 	ebm bool
@@ -244,6 +242,12 @@ func (s *session) STARTTLS(c *Command) error {
 
 	// Replace tcp connection with the upgraded TLS one
 	s.setConnection(client)
+
+	// Discard any knowledge obtained prior the TLS upgrade as per RFC3207
+	s.src = make([]byte, 0)
+	s.dst = make([][]byte, 0)
+	s.ebm = false
+	s.body = make([]byte, 0)
 
 	return nil
 }
