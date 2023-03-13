@@ -87,17 +87,10 @@ func (suite *ServerTest) SetupTest() {
 	suite.handler = &messageHandlerWrapper{}
 	suite.maxBodySize = 5 * 1024 * 1024
 
-	certificate, err := tls.X509KeyPair(TestCertBlock, TestKeyBlock)
-	if err != nil {
-		suite.T().Error(err)
-	}
-
 	l, err := Listen(
 		"127.0.0.1:0",
 		Config{
 			MessageHandler: suite.handler,
-			StartTLS:       true,
-			StartTLSCert:   &certificate,
 			MaxBodySize:    suite.maxBodySize,
 		},
 	)
@@ -107,7 +100,6 @@ func (suite *ServerTest) SetupTest() {
 
 	suite.listener = l
 	suite.listenPort = l.Addr().(*net.TCPAddr).Port
-
 }
 
 func (suite *ServerTest) TestServer() {
@@ -126,7 +118,25 @@ func (suite *ServerTest) TestServer() {
 }
 
 func (suite *ServerTest) TestStartTLS() {
-	client, err := gosmtp.Dial(fmt.Sprintf("127.0.0.1:%d", suite.listenPort))
+	certificate, err := tls.X509KeyPair(TestCertBlock, TestKeyBlock)
+	if err != nil {
+		suite.T().Error(err)
+	}
+
+	l, err := Listen(
+		"127.0.0.1:0",
+		Config{
+			MessageHandler: suite.handler,
+			StartTLS:       true,
+			StartTLSCert:   &certificate,
+			MaxBodySize:    suite.maxBodySize,
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	client, err := gosmtp.Dial(fmt.Sprintf("127.0.0.1:%d", l.Addr().(*net.TCPAddr).Port))
 	if err != nil {
 		suite.T().Error(err)
 	}

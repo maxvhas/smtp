@@ -287,6 +287,11 @@ func (s *session) EHLO(c *Command) error {
 	for _, e := range SupportedExtensions {
 		resp.AddLine(e)
 	}
+
+	if s.config.StartTLS {
+		resp.AddLine([]byte("STARTTLS"))
+	}
+
 	_, err := s.conn.Write(resp.Pack())
 	return err
 }
