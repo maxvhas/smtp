@@ -30,6 +30,7 @@ var ResponseCodeMap = map[ResponseCode][]byte{
 var SupportedExtensions = [][]byte{
 	[]byte("PIPELINING"),
 	[]byte("8BITMIME"),
+	[]byte("STARTTLS"),
 }
 
 // ConcurrentResponder is intended to be used by a single session
