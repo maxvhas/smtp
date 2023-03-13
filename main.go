@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"snorba.art/mail/inbound/smtp"
+	"git.snorba.art/snorbaarden/inbound/smtp"
 )
 
 func main() {
