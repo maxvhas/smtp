@@ -1,4 +1,4 @@
-module snorba.art/mail/inbound
+module git.snorba.art/snorbaarden/inbound
 
 go 1.18
 
