@@ -380,9 +380,6 @@ func (s *session) DATA(c *Command) error {
 	log.Info("Reading DATA lines")
 	resp = Response{}
 	for line, err := s.readLine(); err == nil; line, err = s.readLine() {
-		s.body = append(s.body, line...)
-		s.body = append(s.body, '\r', '\n')
-
 		if len(line) == 1 && bytes.Compare(line, []byte{'.'}) == 0 {
 			resp.SetCode(RespOK)
 			resp.AddLine([]byte("Ok: queued as a=@me"))
@@ -392,6 +389,9 @@ func (s *session) DATA(c *Command) error {
 			s.handleDelivery()
 			break
 		}
+
+		s.body = append(s.body, line...)
+		s.body = append(s.body, '\r', '\n')
 	}
 
 	if err != nil && !errors.Is(err, io.EOF) {

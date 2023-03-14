@@ -108,10 +108,10 @@ func (suite *ServerTest) TestServer() {
 		nil,
 		"sender@example.org",
 		[]string{"receiver@example.org"},
-		[]byte("To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\nbunzing aaa bunzing aaaaaa\r\n.\r\n"),
+		[]byte("To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\nbunzing aaa bunzing aaaaaa\r\n"),
 	)
 
-	//	fmt.Println("Message: ", string([]byte("bunzing aaa bunzing aaaaaa\r\n.\r\n")))
+	//	fmt.Println("Message: ", string([]byte("bunzing aaa bunzing aaaaaa\r\n")))
 	if err != nil {
 		suite.T().Error(err)
 	}
@@ -168,7 +168,7 @@ func (suite *ServerTest) TestStartTLS() {
 		[]byte(
 			"To: receiver@example.com\r\n" +
 				"From: sender@example.com\r\n" +
-				"\r\nbunzing aaa bunzing aaaaaa\r\n.\r\n",
+				"\r\nbunzing aaa bunzing aaaaaa\r\n",
 		),
 	)
 	if err != nil {
@@ -204,7 +204,7 @@ func (suite *ServerTest) TestMaxBodySize() {
 		nil,
 		"sender@example.org",
 		[]string{"receiver@example.org"},
-		[]byte("To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\n"+string(mailData)+"\r\n.\r\n"),
+		[]byte("To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\n"+string(mailData)+"\r\n"),
 	)
 
 	if err == nil {
@@ -231,12 +231,14 @@ func (suite *ServerTest) TestHandler() {
 
 	mailData = mailData[:len(data)]
 
+	contents := "To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\n" + string(mailData) + "\r\n"
+
 	err = gosmtp.SendMail(
 		fmt.Sprintf("127.0.0.1:%d", suite.listenPort),
 		nil,
 		"sender@example.org",
 		[]string{"receiver@example.org", "receiver1@example.org", "receiver2@example.org"},
-		[]byte("To: receiver@example.com\r\nFrom: sender@example.com\r\n\r\n"+string(mailData)+"\r\n.\r\n"),
+		[]byte(contents),
 	)
 
 	if err != nil {
@@ -247,6 +249,8 @@ func (suite *ServerTest) TestHandler() {
 		[]string{"receiver@example.org", "receiver1@example.org", "receiver2@example.org"},
 		envelope.Destination,
 	)
+
+	suite.Assert().Equal(contents, string(envelope.Body))
 }
 
 func TestServerTest(t *testing.T) {
