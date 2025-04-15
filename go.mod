@@ -1,4 +1,4 @@
-module git.snorba.art/snorbaarden/inbound
+module github.com/maxvhas/smtp
 
 go 1.18
 
